@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 	"math/rand"
+	"encoding/json"
 
 	"github.com/aerokube/selenoid/config"
 	"github.com/aerokube/selenoid/session"
@@ -143,6 +144,13 @@ func (d *Docker) StartWithCancel() (*StartedService, error) {
 	}
 	cl := d.Client
 	env := getEnv(d.ServiceBase, d.Caps)
+	
+	bnd, err := json.Marshal(portConfig.PortBindings)
+	exp, err := json.Marshal(portConfig.ExposedPorts)
+	
+	log.Printf("PORT BINDINGS: [%s] ", string(bnd))
+	log.Printf("EXPOSED PORTS: [%s] ", string(exp))
+	
 	container, err := cl.ContainerCreate(ctx,
 		&ctr.Config{
 			Hostname:     getContainerHostname(d.Caps),
@@ -218,6 +226,14 @@ func (d *Docker) StartWithCancel() (*StartedService, error) {
 
 	var publishedPortsInfo map[string]string
 	publishedPortsInfo = getContainerPorts(stat)
+	
+	hpJson, err := json.Marshal(hostPort)
+	uJson, err := json.Marshal(u)
+	publishedJson, err := json.Marshal(publishedPortsInfo)
+	
+	log.Printf("hostPort: [%s] ", string(hpJson))
+	log.Printf("u: [%s] ", string(uJson))
+        log.Printf("publishedPortsInfo: [%s] ", string(publishedJson))
 
 	s := StartedService{
 		Url: u,
@@ -428,22 +444,14 @@ func getHostPort(env Environment, servicePort string, caps session.Caps, stat ty
 	fn := func(containerPort string, port nat.Port) string {
 		return ""
 	}
-	if env.IP == "" {
-		if env.InDocker {
-			containerIP := getContainerIP(env.Network, stat)
-			fn = func(containerPort string, port nat.Port) string {
-				return net.JoinHostPort(containerIP, containerPort)
-			}
-		} else {
-			fn = func(containerPort string, port nat.Port) string {
-				return net.JoinHostPort("127.0.0.1", stat.NetworkSettings.Ports[port][0].HostPort)
-			}
-		}
-	} else {
-		fn = func(containerPort string, port nat.Port) string {
-			return net.JoinHostPort(env.IP, stat.NetworkSettings.Ports[port][0].HostPort)
-		}
+	
+	if env.InDocker {
+	    containerIP := getContainerIP(env.Network, stat)
+	    fn = func(containerPort string, port nat.Port) string {
+		return net.JoinHostPort(containerIP, stat.NetworkSettings.Ports[port][0].HostPort)
+            }
 	}
+
 	hp := session.HostPort{
 		Selenium:   fn(servicePort, pc[servicePort]),
 		Fileserver: fn(ports.Fileserver, pc[ports.Fileserver]),
