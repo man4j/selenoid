@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 	"time"
+	"math/rand"
 
 	"github.com/aerokube/selenoid/config"
 	"github.com/aerokube/selenoid/session"
@@ -128,7 +129,6 @@ func (d *Docker) StartWithCancel() (*StartedService, error) {
 		},
 		ExtraHosts: getExtraHosts(d.Service, d.Caps),
 	}
-	hostConfig.PublishAllPorts = d.Service.PublishAllPorts
 	if len(d.Caps.DNSServers) > 0 {
 		hostConfig.DNS = d.Caps.DNSServers
 	}
@@ -217,9 +217,7 @@ func (d *Docker) StartWithCancel() (*StartedService, error) {
 	log.Printf("[%d] [PROXY_TO] [%s] [%s]", requestId, browserContainerId, u.String())
 
 	var publishedPortsInfo map[string]string
-	if d.Service.PublishAllPorts {
-		publishedPortsInfo = getContainerPorts(stat)
-	}
+	publishedPortsInfo = getContainerPorts(stat)
 
 	s := StartedService{
 		Url: u,
@@ -291,13 +289,13 @@ func getPortConfig(service *config.Browser, caps session.Caps, env Environment) 
 	exposedPorts[devtools] = struct{}{}
 
 	portBindings := nat.PortMap{}
-	if env.IP != "" || !env.InDocker {
-		portBindings[selenium] = []nat.PortBinding{{HostIP: "0.0.0.0"}}
-		portBindings[fileserver] = []nat.PortBinding{{HostIP: "0.0.0.0"}}
-		portBindings[clipboard] = []nat.PortBinding{{HostIP: "0.0.0.0"}}
-		portBindings[devtools] = []nat.PortBinding{{HostIP: "0.0.0.0"}}
+	if env.InDocker {
+		portBindings[selenium] = []nat.PortBinding{{HostIP: "0.0.0.0", HostPort: strconv.Itoa(rand.Intn(64000) + 1024)}}
+		portBindings[fileserver] = []nat.PortBinding{{HostIP: "0.0.0.0", HostPort: strconv.Itoa(rand.Intn(64000) + 1024)}}
+		portBindings[clipboard] = []nat.PortBinding{{HostIP: "0.0.0.0", HostPort: strconv.Itoa(rand.Intn(64000) + 1024)}}
+		portBindings[devtools] = []nat.PortBinding{{HostIP: "0.0.0.0", HostPort: strconv.Itoa(rand.Intn(64000) + 1024)}}
 		if caps.VNC {
-			portBindings[vnc] = []nat.PortBinding{{HostIP: "0.0.0.0"}}
+			portBindings[vnc] = []nat.PortBinding{{HostIP: "0.0.0.0", HostPort: strconv.Itoa(rand.Intn(64000) + 1024)}}
 		}
 	}
 	return &portConfig{
@@ -473,26 +471,8 @@ func getContainerPorts(stat types.ContainerJSON) map[string]string {
 	return exposedPorts
 }
 
-func getContainerIP(networkName string, stat types.ContainerJSON) string {
-	ns := stat.NetworkSettings
-	if ns.IPAddress != "" {
-		return stat.NetworkSettings.IPAddress
-	}
-	if len(ns.Networks) > 0 {
-		var possibleAddresses []string
-		for name, nt := range ns.Networks {
-			if nt.IPAddress != "" {
-				if name == networkName {
-					return nt.IPAddress
-				}
-				possibleAddresses = append(possibleAddresses, nt.IPAddress)
-			}
-		}
-		if len(possibleAddresses) > 0 {
-			return possibleAddresses[0]
-		}
-	}
-	return ""
+func getContainerIP(networkName string, stat types.ContainerJSON) string {	
+	return os.Getenv("EXTERNAL_IP")
 }
 
 func startVideoContainer(ctx context.Context, cl *client.Client, requestId uint64, browserContainer types.ContainerJSON, environ Environment, service ServiceBase, caps session.Caps) (string, error) {
