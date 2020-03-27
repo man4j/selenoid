@@ -483,6 +483,28 @@ func getContainerIP(networkName string, stat types.ContainerJSON) string {
 	return os.Getenv("EXTERNAL_IP")
 }
 
+func getSwarmContainerIP(networkName string, stat types.ContainerJSON) string {
+    ns := stat.NetworkSettings
+    if ns.IPAddress != "" {
+	return stat.NetworkSettings.IPAddress
+    }
+    if len(ns.Networks) > 0 {
+	var possibleAddresses []string
+	for name, nt := range ns.Networks {
+	    if nt.IPAddress != "" {
+		if name == networkName {
+		    return nt.IPAddress
+		}
+		possibleAddresses = append(possibleAddresses, nt.IPAddress)
+	    }
+	}
+	if len(possibleAddresses) > 0 {
+	    return possibleAddresses[0]
+	}
+    }
+    return ""
+}
+
 func startVideoContainer(ctx context.Context, cl *client.Client, requestId uint64, browserContainer types.ContainerJSON, environ Environment, service ServiceBase, caps session.Caps) (string, error) {
 	videoContainerStartTime := time.Now()
 	videoContainerImage := environ.VideoContainerImage
@@ -501,7 +523,7 @@ func startVideoContainer(ctx context.Context, cl *client.Client, requestId uint6
 		AutoRemove:  true,
 		NetworkMode: ctr.NetworkMode(environ.Network),
 	}
-	browserContainerName := getContainerIP(environ.Network, browserContainer)
+	browserContainerName := getSwarmContainerIP(environ.Network, browserContainer)
 	if environ.Network == DefaultContainerNetwork {
 		const defaultBrowserContainerName = "browser"
 		hostConfig.Links = []string{fmt.Sprintf("%s:%s", browserContainer.ID, defaultBrowserContainerName)}
